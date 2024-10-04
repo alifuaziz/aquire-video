@@ -28,7 +28,7 @@ class CameraViewer(QWidget):
         self.framerate_slider = QSlider(Qt.Orientation.Horizontal)
         self.framerate_slider.setRange(5, 60)  # Framerate range from 5 to 60 FPS
         self.framerate_slider.setValue(30)
-        self.framerate_slider.valueChanged.connect(self.update_framerate_label)
+        self.framerate_slider.valueChanged.connect(self.update_framerate_label) # Update the label when the slider value changes
 
         # Create a layout for the framerate slider and label
         framerate_layout = QHBoxLayout()
@@ -64,16 +64,16 @@ class CameraViewer(QWidget):
         self.camera.BeginAcquisition()
 
         # Video recording variables
-        self.recording = False
+        self.RECORDING = False
         self.video_writer = None
-        self.framerate = 30  # Default framerate
+        self.FRAMERATE = 30 # Default framerate
+        self.TIME_INTERVAL = 1000 // self.FRAMERATE  # Calculate the time interval based on the framerate
         self.frame_count = 0  # Counter for frames written
         
         # Create a timer to update the video feed
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_image)
-        self.timer.start(int(1/self.framerate * 1000))  # Update the video feed every 30 ms (default)
-
+        self.timer.start(self.TIME_INTERVAL)  # Update the video feed every 30 ms (default)
 
         # Elapsed time variables
         self.start_time = None
@@ -85,10 +85,10 @@ class CameraViewer(QWidget):
         self.height = self.camera.Height.GetValue()
 
         # Check if the camera outputs color or grayscale images
-        self.is_color = self.camera.PixelFormat.GetValue() in [PySpin.PixelFormat_RGB8, PySpin.PixelFormat_BGR8]
+        self.IS_COLOR = self.camera.PixelFormat.GetValue() in [PySpin.PixelFormat_RGB8, PySpin.PixelFormat_BGR8]
 
         print(f"Camera Resolution: {self.width}x{self.height}")
-        print(f"Is Color: {self.is_color}")
+        print(f"Is Color: {self.IS_COLOR}")
 
     def update_image(self):
         try:
@@ -99,7 +99,8 @@ class CameraViewer(QWidget):
             # Convert the image data to a format suitable for PyQt6 and OpenCV
             image_data = image_result.GetNDArray()
 
-            if self.is_color:
+            
+            if self.IS_COLOR:
                 # Convert BGR to RGB for displaying in PyQt
                 image_data = cv2.cvtColor(image_data, cv2.COLOR_BGR2RGB)
                 image_format = QImage.Format.Format_RGB888
@@ -115,27 +116,28 @@ class CameraViewer(QWidget):
             self.image_label.setPixmap(pixmap)
 
             # Save the image to the video file if recording is enabled
-            if self.recording and self.video_writer is not None:
-                if not self.is_color:
+            if self.RECORDING and self.video_writer is not None:
+                if not self.IS_COLOR:
                     # Convert grayscale to BGR before writing to the video
                     image_bgr = cv2.cvtColor(image_data, cv2.COLOR_GRAY2BGR)
                 else:
                     image_bgr = cv2.cvtColor(image_data, cv2.COLOR_RGB2BGR)  # Back to BGR for video writer
 
-                # Write the frame to the video
+                # Write the frame to the video_writer object that will save to become a video
                 self.video_writer.write(image_bgr)
                 self.frame_count += 1  # Increment frame count
 
             # Release the image back to the camera
             image_result.Release()
-
+        
         except PySpin.SpinnakerException as e:
             print(f"Error: {e}")
 
     def update_framerate_label(self):
         # Update the label to reflect the current framerate slider value
-        self.framerate = self.framerate_slider.value()
-        self.framerate_label.setText(f"Framerate: {self.framerate} FPS")
+        self.FRAMERATE = self.framerate_slider.value()
+        self.TIME_INTERVAL = 1000 // self.FRAMERATE  # Calculate the time interval based on the framerate
+        self.framerate_label.setText(f"Framerate: {self.FRAMERATE} FPS")
 
     def update_elapsed_time(self):
         # Update the elapsed time label
@@ -147,17 +149,18 @@ class CameraViewer(QWidget):
         try:
             # Create a video writer object to save the video with the selected framerate
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            self.video_writer = cv2.VideoWriter("output.mp4", fourcc, self.framerate, (self.width, self.height), isColor=True)
+            self.video_writer = cv2.VideoWriter("output.mp4", fourcc, self.FRAMERATE, (self.width, self.height), isColor=True)
 
             if not self.video_writer.isOpened():
                 print("Error: Could not open video file for writing.")
                 return
 
-            print(f"Recording started at {self.framerate} FPS...")
-            self.recording = True
+            print(f"Recording started at {self.FRAMERATE} FPS...")
+            self.RECORDING = True
             self.frame_count = 0  # Reset frame count
             self.start_time = time.time()  # Start the timer
             self.elapsed_timer.start(100)  # Update elapsed time every 100 ms
+            
             self.start_button.setEnabled(False)
             self.stop_button.setEnabled(True)
         except Exception as e:
@@ -170,7 +173,7 @@ class CameraViewer(QWidget):
             self.video_writer = None
 
         print(f"Recording stopped... Total frames written: {self.frame_count}. Elapsed time: {time.time() - self.start_time:.1f} s")
-        self.recording = False
+        self.RECORDING = False
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
 
